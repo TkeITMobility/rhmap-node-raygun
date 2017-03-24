@@ -12,7 +12,7 @@ const raygun = require('raygun');
  */
 module.exports = function getRaygunInstance (config) {
 
-  const apiKey = env('RAYGUN_API_KEY').asString() || config.apiKey;
+  const apiKey = config.apiKey || env('RAYGUN_API_KEY').asString();
 
   assert(
     typeof apiKey === 'string' && apiKey !== '',

@@ -57,29 +57,25 @@ describe('rhmap-raygun-nodejs', () => {
     }).to.throw('AssertionError');
   });
 
-  it('should prefer RAYGUN_API_KEY env var', () => {
+  it('should prefer config.apiKey over env var', () => {
     mod({
       apiKey: '0987654321'
     });
 
     expect(raygunInit.calledWith({
-      apiKey: 'raygunkey'
+      apiKey: '0987654321'
     })).to.be.truthy();
   });
 
-  it('should use the supplied apiKey if env var is not set', () => {
+  it('should use the env var if apiKey is not passed', () => {
     envStub.withArgs('RAYGUN_API_KEY').returns({
-      asString: sinon.stub().returns(undefined)
+      asString: sinon.stub().returns('raygun')
     });
 
-    const key = '0987654321';
-
-    mod({
-      apiKey: key
-    });
+    mod({});
 
     expect(raygunInit.calledWith({
-      apiKey: key
+      apiKey: 'raygun'
     })).to.be.truthy();
   });
 
