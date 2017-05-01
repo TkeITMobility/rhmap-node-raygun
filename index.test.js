@@ -4,38 +4,33 @@ const sinon = require('sinon');
 const chai = require('chai');
 const expect = chai.expect;
 const proxyquire = require('proxyquire').noCallThru();
+const env = require('env-var');
 
 chai.use(require('chai-truthy'));
 
 require('sinon-as-promised');
 
 describe('rhmap-raygun-nodejs', () => {
-  let mod, stubs, raygunInit, raygunSend, envStub;
+  let stubs, raygunInit, raygunSend, raygunSetTags;
 
   const RAYGUN = 'raygun';
   const ENV = 'env-var';
 
-  beforeEach(() => {
-    envStub = sinon.stub();
-
-    envStub.withArgs('RAYGUN_API_KEY').returns({
-      asString: sinon.stub().returns('raygunkey')
-    });
-    envStub.withArgs('FH_INSTANCE').returns({
-      asString: sinon.stub().returns('instance')
-    });
-    envStub.withArgs('FH_WIDGET').returns({
-      asString: sinon.stub().returns('widget')
-    });
-    envStub.withArgs('FH_ENV').returns({
-      asString: sinon.stub().returns('env')
-    });;
+  function init(envVars) {
+    let envStub = env.mock(Object.assign({
+      RAYGUN_API_KEY: 'raygunkey',
+      FH_INSTANCE: 'instance',
+      FH_WIDGET: 'widget',
+      FH_ENV: 'env',
+      FH_TITLE: 'title'
+    }, envVars));
 
     stubs = {
       [RAYGUN]: {
         Client: function () {
           raygunSend = this.send = sinon.stub();
           raygunInit = this.init = sinon.stub().returns(this);
+          raygunSetTags = this.setTags = sinon.stub();
 
           return this;
         }
@@ -43,43 +38,54 @@ describe('rhmap-raygun-nodejs', () => {
       [ENV]: envStub
     };
 
-    mod = proxyquire(__filename.replace('.test', ''), stubs);
-  });
+    return proxyquire(__filename.replace('.test', ''), stubs);
+  };
 
-  it('should throw an assertion error due to missing apiKey', () => {
-    // We want the env var to seem missing
-    envStub.withArgs('RAYGUN_API_KEY').returns({
-      asString: sinon.stub().returns(undefined)
+  describe('api key setup', function() {
+
+    it('should throw an assertion error due to missing apiKey', () => {
+      // We want the env var to seem missing
+      let mod = init({
+        RAYGUN_API_KEY: undefined
+      });
+
+      expect(() => {
+        mod({});
+      }).to.throw('AssertionError');
     });
 
-    expect(() => {
+    it('should prefer config.apiKey over env var', () => {
+      let mod = init();
+
+      mod({
+        apiKey: '0987654321'
+      });
+
+      expect(raygunInit.calledWith({
+        apiKey: '0987654321'
+      })).to.be.truthy();
+    });
+
+    it('should use the env var if apiKey is not passed', () => {
+      let mod = init({
+        RAYGUN_API_KEY: 'raygun'
+      });
+
       mod({});
-    }).to.throw('AssertionError');
-  });
 
-  it('should prefer config.apiKey over env var', () => {
-    mod({
-      apiKey: '0987654321'
+      expect(raygunInit.calledWith({
+        apiKey: 'raygun'
+      })).to.be.truthy();
     });
 
-    expect(raygunInit.calledWith({
-      apiKey: '0987654321'
-    })).to.be.truthy();
-  });
-
-  it('should use the env var if apiKey is not passed', () => {
-    envStub.withArgs('RAYGUN_API_KEY').returns({
-      asString: sinon.stub().returns('raygun')
-    });
-
-    mod({});
-
-    expect(raygunInit.calledWith({
-      apiKey: 'raygun'
-    })).to.be.truthy();
   });
 
   describe('#send', () => {
+    let mod;
+    beforeEach(() => {
+      mod = init();
+    });
+
     it('should send with expected params injected plus extras', () => {
       const err = new Error('an error occurred in our node code');
       const instance = mod({});
@@ -93,12 +99,17 @@ describe('rhmap-raygun-nodejs', () => {
       })
         .then((res) => {
           expect(res).to.equal('ok');
-          expect(raygunSend.calledWith(err, {
+          const sendArgs = raygunSend.getCall(0).args;
+          expect(sendArgs[0]).to.eql(err);
+          expect(sendArgs[1]).to.eql({
             appId: 'instance',
-            env: 'env',
             projectId: 'widget',
             username: 'test'
-          })).to.be.truthy();
+          });
+
+          const tags = raygunSetTags.getCall(0).args[0];
+          expect(tags).to.contain('title');
+          expect(tags).to.contain('env');
         });
     });
 
@@ -115,11 +126,12 @@ describe('rhmap-raygun-nodejs', () => {
       })
         .then((res) => {
           expect(res).to.equal('ok');
-          expect(raygunSend.calledWith(err, {
+          const sendArgs = raygunSend.getCall(0).args;
+          expect(sendArgs[0]).to.eql(err);
+          expect(sendArgs[1]).to.eql({
             appId: 'instance',
-            env: 'env',
             projectId: 'widget'
-          })).to.be.truthy();
+          });
         });
     });
 
