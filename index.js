@@ -56,7 +56,17 @@ function createRaygunClient(apiKey) {
   // On RHMAP these variables are always defined. Locally we use stubs.
   const INSTANCE = env('FH_INSTANCE', 'local-instance').asString();
   const WIDGET = env('FH_WIDGET', 'local-project').asString();
-  const ENV = env('FH_ENV', 'local-env').asString();
+  const ENV = env('FH_ENV').asString();
+  const APP_NAME = env('FH_TITLE').asString();
+
+  const tags = [];
+  if (APP_NAME) {
+    tags.push(APP_NAME);
+  }
+  if (ENV) {
+    tags.push(ENV);
+  }
+  client.setTags(tags);
 
   return {
     /**
@@ -70,7 +80,6 @@ function createRaygunClient(apiKey) {
       return new Promise((resolve, reject) => {
         const data = Object.assign({}, extraData || {}, {
           appId: INSTANCE,
-          env: ENV,
           projectId: WIDGET
         });
 

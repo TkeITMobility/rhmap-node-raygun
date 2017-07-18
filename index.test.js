@@ -11,7 +11,7 @@ chai.use(require('chai-truthy'));
 require('sinon-as-promised');
 
 describe('rhmap-raygun-nodejs', () => {
-  let raygunInit, raygunSend;
+  let raygunInit, raygunSend, raygunSetTags;
 
   const RAYGUN = 'raygun';
   const ENV = 'env-var';
@@ -21,11 +21,13 @@ describe('rhmap-raygun-nodejs', () => {
       RAYGUN_API_KEY: 'raygunkey',
       FH_INSTANCE: 'instance',
       FH_WIDGET: 'widget',
-      FH_ENV: 'tke-test'
+      FH_ENV: 'tke-test',
+      FH_TITLE: 'title'
     }, mockEnvVars));
 
     raygunSend = sinon.stub();
     raygunInit = sinon.stub();
+    raygunSetTags = sinon.stub();
 
     const stubs = {
       [RAYGUN]: {
@@ -33,6 +35,7 @@ describe('rhmap-raygun-nodejs', () => {
           raygunInit.returns(this);
           this.init = raygunInit;
           this.send = raygunSend;
+          this.setTags = raygunSetTags;
 
           return this;
         }
@@ -112,10 +115,13 @@ describe('rhmap-raygun-nodejs', () => {
           expect(args[0]).to.eql(err);
           expect(args[1]).to.eql({
             appId: 'instance',
-            env: 'tke-test',
             projectId: 'widget',
             username: 'test'
           });
+
+          const tags = raygunSetTags.getCall(0).args[0];
+          expect(tags).to.contain('title');
+          expect(tags).to.contain('tke-test');
         });
     });
 
@@ -135,7 +141,6 @@ describe('rhmap-raygun-nodejs', () => {
           expect(args[0]).to.eql(err);
           expect(args[1]).to.eql({
             appId: 'instance',
-            env: 'tke-test',
             projectId: 'widget'
           });
         });
