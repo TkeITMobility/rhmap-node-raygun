@@ -3,9 +3,10 @@
 A wrapper around raygun for use in rhmap node.js applications. Ensures that
 the following application metadata is included in sent payloads:
 
-* App ID (FH_INSTANCE)
-* Environment (FH_ENV)
-* Project ID (FH_WIDGET)
+* App Title (FH_TITLE) (as a Raygun tag)
+* Environment (FH_ENV) (as a Raygun tag)
+* App ID (FH_INSTANCE) (as metadata on each error)
+* Project ID (FH_WIDGET) (as metadata on each error)
 
 ## Requirements for deployment
 Make sure that `RAYGUN_API_KEY` environment variable is set in the app being deployed.
