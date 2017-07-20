@@ -3,105 +3,117 @@
 const sinon = require('sinon');
 const chai = require('chai');
 const expect = chai.expect;
-const proxyquire = require('proxyquire').noCallThru();
 const env = require('env-var');
+const proxyquire = require('proxyquire').noCallThru();
 
 chai.use(require('chai-truthy'));
 
 require('sinon-as-promised');
 
 describe('rhmap-raygun-nodejs', () => {
-  let stubs, raygunInit, raygunSend, raygunSetTags;
+  let raygunInit, raygunSend, raygunSetTags;
 
   const RAYGUN = 'raygun';
   const ENV = 'env-var';
 
-  function init(envVars) {
-    let envStub = env.mock(Object.assign({
+  function createModule(mockEnvVars) {
+    const mockEnv = env.mock(Object.assign({
       RAYGUN_API_KEY: 'raygunkey',
       FH_INSTANCE: 'instance',
       FH_WIDGET: 'widget',
-      FH_ENV: 'env',
+      FH_ENV: 'tke-test',
       FH_TITLE: 'title'
-    }, envVars));
+    }, mockEnvVars));
 
-    stubs = {
+    raygunSend = sinon.stub();
+    raygunInit = sinon.stub();
+    raygunSetTags = sinon.stub();
+
+    const stubs = {
       [RAYGUN]: {
         Client: function () {
-          raygunSend = this.send = sinon.stub();
-          raygunInit = this.init = sinon.stub().returns(this);
-          raygunSetTags = this.setTags = sinon.stub();
+          raygunInit.returns(this);
+          this.init = raygunInit;
+          this.send = raygunSend;
+          this.setTags = raygunSetTags;
 
           return this;
         }
       },
-      [ENV]: envStub
+      [ENV]: mockEnv
     };
 
     return proxyquire(__filename.replace('.test', ''), stubs);
-  };
+  }
 
-  describe('api key setup', function() {
-
-    it('should throw an assertion error due to missing apiKey', () => {
-      // We want the env var to seem missing
-      let mod = init({
-        RAYGUN_API_KEY: undefined
-      });
-
-      expect(() => {
-        mod({});
-      }).to.throw('AssertionError');
+  it('should throw an assertion error due to missing apiKey and default env', () => {
+    const mod = createModule({
+      RAYGUN_API_KEY: null
     });
-
-    it('should prefer config.apiKey over env var', () => {
-      let mod = init();
-
-      mod({
-        apiKey: '0987654321'
-      });
-
-      expect(raygunInit.calledWith({
-        apiKey: '0987654321'
-      })).to.be.truthy();
-    });
-
-    it('should use the env var if apiKey is not passed', () => {
-      let mod = init({
-        RAYGUN_API_KEY: 'raygun'
-      });
-
+    expect(() => {
       mod({});
+    }).to.throw('RAYGUN_API_KEY must be set for this environment');
+  });
 
-      expect(raygunInit.calledWith({
-        apiKey: 'raygun'
-      })).to.be.truthy();
+  it('should prefer config.apiKey over env var', () => {
+    const mod = createModule();
+
+    mod({
+      apiKey: '0987654321'
     });
 
+    expect(raygunInit.callCount).to.eql(1);
+    expect(raygunInit.getCall(0).args[0]).to.eql({
+      apiKey: '0987654321'
+    });
+  });
+
+  it('should use the env var if apiKey is not passed', () => {
+    const mod = createModule();
+
+    mod();
+
+    expect(raygunInit.callCount).to.eql(1);
+    expect(raygunInit.getCall(0).args[0]).to.eql({
+      apiKey: 'raygunkey'
+    });
+  });
+
+  it('Should create a dummy raygun client if no api key is given but it is a local env', () => {
+    const mod = createModule({
+      RAYGUN_API_KEY: null,
+      FH_ENV: 'local-env'
+    });
+
+    const instance = mod();
+    return instance.send()
+      .then(() => {
+        expect(raygunInit.callCount).to.eql(0);
+        expect(raygunSend.callCount).to.eql(0);
+      });
   });
 
   describe('#send', () => {
     let mod;
     beforeEach(() => {
-      mod = init();
+      mod = createModule();
     });
 
     it('should send with expected params injected plus extras', () => {
       const err = new Error('an error occurred in our node code');
-      const instance = mod({});
+      const instance = mod();
 
       expect(raygunInit.calledOnce).to.be.truthy();
 
-      raygunSend.yields(null, 'ok');
+      raygunSend.yields(null);
 
       return instance.send(err, {
         username: 'test'
       })
-        .then((res) => {
-          expect(res).to.equal('ok');
-          const sendArgs = raygunSend.getCall(0).args;
-          expect(sendArgs[0]).to.eql(err);
-          expect(sendArgs[1]).to.eql({
+        .then(() => {
+          const args = raygunSend.getCall(0).args;
+          expect(args[0]).to.eql(err);
+          expect(args[1]).to.eql({
             appId: 'instance',
             projectId: 'widget',
             username: 'test'
@@ -109,13 +121,13 @@ describe('rhmap-raygun-nodejs', () => {
 
           const tags = raygunSetTags.getCall(0).args[0];
           expect(tags).to.contain('title');
-          expect(tags).to.contain('env');
+          expect(tags).to.contain('tke-test');
         });
     });
 
     it('should not allow extra rhmap data to be overwritten', () => {
       const err = new Error('an error occurred in our node code');
-      const instance = mod({});
+      const instance = mod();
 
       expect(raygunInit.calledOnce).to.be.truthy();
 
@@ -124,11 +136,10 @@ describe('rhmap-raygun-nodejs', () => {
       return instance.send(err, {
         appId: 'should not be injected'
       })
-        .then((res) => {
-          expect(res).to.equal('ok');
-          const sendArgs = raygunSend.getCall(0).args;
-          expect(sendArgs[0]).to.eql(err);
-          expect(sendArgs[1]).to.eql({
+        .then(() => {
+          const args = raygunSend.getCall(0).args;
+          expect(args[0]).to.eql(err);
+          expect(args[1]).to.eql({
             appId: 'instance',
             projectId: 'widget'
           });
@@ -137,15 +148,15 @@ describe('rhmap-raygun-nodejs', () => {
 
     it('should return errors from raygun', () => {
       const err = new Error('an error occurred in our node code');
-      const instance = mod({});
+      const instance = mod();
 
       expect(raygunInit.calledOnce).to.be.truthy();
 
-      raygunSend.yields(new Error('raygun error'), 'ok');
+      raygunSend.yields(new Error('raygun error'));
 
       return instance.send(err)
         .catch((e) => {
-          expect(e.toString()).contain('raygun error');
+          expect(e.message).contain('raygun error');
         });
     });
   });

@@ -1,6 +1,6 @@
 {
   "name": "rhmap-raygun-nodejs",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "a wrapper around raygun for use in rhmap node.js applications",
   "main": "index.js",
   "scripts": {
@@ -19,7 +19,8 @@
   "license": "SEE LICENSE IN LICENSE",
   "dependencies": {
     "env-var": "~2.4.2",
-    "raygun": "~0.9.1"
+    "raygun": "~0.9.1",
+    "tke-logger": "tkeitmobility/tke-cloud-logger#v0.5.0"
   },
   "engines": {
     "node": ">=4.4.3"

@@ -1,24 +1,54 @@
 'use strict';
 
 const env = require('env-var');
-const assert = require('assert');
 const raygun = require('raygun');
+const log = require('tke-logger').getLogger(__filename);
 
+// If FH_ENV is one of these values, then RAYGUN_API_KEY must be present
+const REQUIRED_ENVS = [
+  'tke-dev',
+  'tke-test',
+  'tke-preprod',
+  'tke-prod'
+];
 
 /**
  * Creates a raygun instance.
  * @param  {Object} config
  * @return {Object}
  */
-module.exports = function getRaygunInstance (config) {
+module.exports = function getRaygunInstance(config) {
+
+  config = config || {};
 
   const apiKey = config.apiKey || env('RAYGUN_API_KEY').asString();
 
-  assert(
-    typeof apiKey === 'string' && apiKey !== '',
-    'RAYGUN_API_KEY env var or config.apiKey must be a non empty string'
-  );
+  if (apiKey) {
+    return createRaygunClient(apiKey);
+  }
 
+  if (envRequiresRaygun()) {
+    throw new Error('RAYGUN_API_KEY must be set for this environment');
+  }
+
+  log.warn('Raygun not configured because the RAYGUN_API_KEY env var was not found. Not sending errors to Raygun');
+  return createDummyClient();
+};
+
+function envRequiresRaygun() {
+  // If FH_ENV is set, and it's one of our deployed environments, then we
+  //  need a Raygun key.
+  const curEnv = env('FH_ENV').asString();
+  return curEnv && REQUIRED_ENVS.find((e) => e === curEnv);
+}
+
+function createDummyClient() {
+  return {
+    send: () => Promise.resolve()
+  };
+}
+
+function createRaygunClient(apiKey) {
   const client = new raygun.Client().init({
     apiKey: apiKey
   });
@@ -39,7 +69,6 @@ module.exports = function getRaygunInstance (config) {
   client.setTags(tags);
 
   return {
-
     /**
      * Send data to raygun using their documented send function, but include
      * the app id and environment
@@ -63,6 +92,5 @@ module.exports = function getRaygunInstance (config) {
         });
       });
     }
-
   };
-};
+}
